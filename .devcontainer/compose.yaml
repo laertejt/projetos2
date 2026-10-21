@@ -1,0 +1,47 @@
+services:
+  banco:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: escola
+      POSTGRES_PASSWORD: dev-escola
+      POSTGRES_DB: escola
+    volumes:
+      - dados_devcontainer:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U escola -d escola"]
+
+  backend:
+    build:
+      context: ../backend
+    working_dir: /workspaces/projetos2/backend
+    volumes:
+      - ..:/workspaces/projetos2
+    environment:
+      user: escola
+      senha: dev-escola
+      host: banco
+      porta: "5432"
+      banco: escola
+    ports:
+      - "8000:8000"
+    depends_on:
+      banco:
+        condition: service_healthy
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+
+  frontend:
+    build:
+      context: ../frontend
+    working_dir: /workspaces/projetos2/frontend
+    volumes:
+      - ..:/workspaces/projetos2
+    environment:
+      API_BASE_URL: http://backend:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    command: ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501", "--browser.gatherUsageStats=false"]
+
+volumes:
+  dados_devcontainer:

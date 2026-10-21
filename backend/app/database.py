@@ -27,3 +27,30 @@ class Base(DeclarativeBase):
 def get_db():
   with SessionLocal() as db:
     yield db
+
+
+
+from sqlalchemy import URL
+
+MYSQL_URL = URL.create(
+    drivername="mysql+pymysql",
+    username=os.environ["MYSQL_USER"],
+    password=os.environ["MYSQL_PASSWORD"],
+    host=os.environ["MYSQL_HOST"],
+    port=int(os.getenv("MYSQL_PORT", "3306")),
+    database=os.environ["MYSQL_DATABASE"],
+    query={"charset": "utf8mb4"},
+)
+
+mysql_engine = create_engine(MYSQL_URL, pool_pre_ping=True)
+
+MySQLSessionLocal = sessionmaker(bind=mysql_engine)
+
+
+class MySQLBase(DeclarativeBase):
+    pass
+
+
+def get_mysql_db():
+    with MySQLSessionLocal() as db:
+        yield db

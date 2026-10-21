@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 
 class EnderecoIn(BaseModel):
@@ -22,6 +22,11 @@ class AlunoIn(BaseModel):
     nome_aluno: str
     email: str
     endereco_id: int
+
+class AlunoOut(AlunoIn):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
 
 class AlunoUpdateIn(BaseModel):
     matricula: Optional[str] = None

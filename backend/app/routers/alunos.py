@@ -1,8 +1,9 @@
-from fastapi import APIRouter
-from sqlalchemy import text
-import pandas as pd
-from app.database import engine
-from app.schemas import AlunoIn, AlunoUpdateIn
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models import Aluno
+from app.schemas import AlunoIn, AlunoOut, AlunoUpdateIn
 
 router = APIRouter(prefix="/alunos")
 
@@ -10,49 +11,45 @@ router = APIRouter(prefix="/alunos")
 def primeira_api():
   return {"message": "Hello, World!"}
 
-@router.get("/pegar-dados-aluno")
-def pegar_dados_alunos():
-  query = "SELECT * FROM tb_alunos ORDER BY id"
-  df = pd.read_sql(query, engine)
-  return df.to_dict(orient="records")
+@router.get("/pegar-dados-aluno", response_model=list[AlunoOut])
+def pegar_dados_alunos(db: Session = Depends(get_db)):
+  return db.scalars(select(Aluno).order_by(Aluno.id)).all()
 
-@router.get("/pegar-dados-aluno-por-id/{id}")
-def pegar_dados_alunos_por_id(id: int):
-  query = f"SELECT * FROM tb_alunos WHERE id = {id}"
-  df = pd.read_sql(query, engine)
-  return df.to_dict(orient="records")
+@router.get("/pegar-dados-aluno-por-id/{id}", response_model=list[AlunoOut])
+def pegar_dados_alunos_por_id(id: int, db: Session = Depends(get_db)):
+  aluno = db.get(Aluno, id)
+  return [aluno] if aluno is not None else []
 
 @router.post("/criar-aluno")
-def criar_aluno(aluno: AlunoIn):
-  # Transformando dict em df
-  df = pd.DataFrame([aluno.model_dump()])
-  # Insert no banco de dados
-  df.to_sql("tb_alunos", engine, if_exists="append", index=False)
+def criar_aluno(aluno: AlunoIn, db: Session = Depends(get_db)):
+  novo_aluno = Aluno(**aluno.model_dump())
+  db.add(novo_aluno)
+  db.commit()
   return {"mensagem": "Aluno cadastrado com sucesso!"}
 
 @router.put("/atualizar-aluno/{id}")
-def atualizar_aluno(id: int, aluno: AlunoUpdateIn):
-  campos_sql = ", ".join([f"{chave} = :{chave}" for chave in aluno.model_dump(exclude_unset=True).keys()])
-  query = f"""
-      UPDATE tb_alunos
-      SET {campos_sql}
-      WHERE id = :id
-  """ 
-  with engine.connect() as conn:
-    conn.execute(
-      text(query),
-      {"id":id, **aluno.model_dump(exclude_unset=True)}
-    )
-    conn.commit(
+def atualizar_aluno(id: int, aluno: AlunoUpdateIn, db: Session = Depends(get_db)):
+  aluno_db = db.get(Aluno, id)
+  if aluno_db is None:
+    raise HTTPException(status_code=404, detail="Aluno não encontrado.")
 
-    )
+  for campo, valor in aluno.model_dump(exclude_unset=True).items():
+    setattr(aluno_db, campo, valor)
+
+  db.commit()
   return {"mensagem": "Aluno atualizado com sucesso."}
 
 @router.delete("/deletar-aluno/{id}")
-def deletar_aluno(id: int):
-  query = f"DELETE FROM tb_alunos WHERE id = {id}"
-  with engine.connect() as conn:
-    conn.execute( text(query))
-    conn.commit() 
+def deletar_aluno(id: int, db: Session = Depends(get_db)):
+  aluno = db.get(Aluno, id)
+  if aluno is None:
+    raise HTTPException(status_code=404, detail="Aluno não encontrado.")
+
+  db.delete(aluno)
+  db.commit()
   return {"mensagem": "Aluno deletado com sucesso."}
+
+
+
+
 

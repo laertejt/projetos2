@@ -1,0 +1,21 @@
+{
+  "name": "Projetos2 local",
+  "dockerComposeFile": "compose.yaml",
+  "service": "frontend",
+  "runServices": [
+    "banco",
+    "backend",
+    "frontend"
+  ],
+  "workspaceFolder": "/workspaces/projetos2",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [8501, 8000],
+  "portsAttributes": {
+    "8501": {
+      "label": "Streamlit"
+    },
+    "8000": {
+      "label": "FastAPI"
+    }
+  }
+}
