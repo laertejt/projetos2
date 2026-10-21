@@ -2,6 +2,166 @@
 
 Guia completo para configurar e montar o banco de dados, como também utilizar e testar os comandos do CRUD na prática com o FastAPI e SQLAlchemy
 
+## Cadastro com CEP e situação acadêmica
+
+### Roteiro para a aula
+
+Leia os arquivos nesta ordem:
+
+1. `app/routers/alunos.py`: recebe a requisição e chama o service.
+2. `app/services/aluno_service.py`: consulta o CEP e cadastra o aluno.
+3. `app/services/cep_service.py`: busca o endereço no ViaCEP.
+4. `app/models.py`: mostra as classes que representam as tabelas do banco.
+
+No cadastro, acompanhe os comentários numerados de `criar_com_cep`:
+
+```text
+Consultar ViaCEP
+          ↓
+Procurar endereço no banco
+          ↓
+Criar endereço, se necessário
+          ↓
+Criar aluno
+          ↓
+Salvar tudo com commit()
+```
+
+Comandos usados no ORM:
+
+- `select(...)`: monta uma consulta.
+- `db.scalar(...)`: executa a consulta e pega um resultado.
+- `db.add(...)`: prepara um objeto para cadastro.
+- `db.flush()`: envia o cadastro ao banco para obter o ID, sem confirmar.
+- `db.commit()`: confirma as alterações.
+- `db.rollback()`: desfaz as alterações ainda não confirmadas.
+
+Em `situacao_academica`, a regra usa `sum(notas) / len(notas)` para calcular
+a média e `if/else` para decidir entre aprovado, reprovado e sem notas.
+
+As rotas de alunos seguem o fluxo `router → aluno_service → SQLAlchemy ORM → PostgreSQL`.
+O `aluno_service` consulta o ViaCEP por meio de `cep_service`.
+
+Antes de usar os endpoints, execute na pasta `backend`:
+
+```bash
+uv run alembic upgrade head
+```
+
+A migration `a7c29e314b80` cria um índice único em `lower(trim(email))`.
+Matrícula e CEP já possuem restrições de unicidade. Se houver emails duplicados
+na base atual, a migration falhará sem remover registros. Localize os grupos
+com a consulta abaixo e corrija os cadastros antes de tentar novamente:
+
+```sql
+SELECT lower(trim(email)) AS email_normalizado, count(*)
+FROM tb_alunos
+GROUP BY lower(trim(email))
+HAVING count(*) > 1;
+```
+
+### POST /alunos/criar-com-cep
+
+```json
+{
+  "matricula": "2026001",
+  "nome_aluno": "Ana Silva",
+  "email": "ana@example.com",
+  "cep": "01001-000"
+}
+```
+
+Aceita CEP com ou sem hífen. Consulta o ViaCEP com timeout de 5 segundos,
+reutiliza um endereço pelo CEP ou cria um novo e cadastra o aluno. Endereço e
+aluno são persistidos na mesma transação. O endereço representa os dados do
+CEP, sem número ou complemento individual do aluno.
+
+Resposta `201`:
+
+```json
+{
+  "id": 1,
+  "matricula": "2026001",
+  "nome_aluno": "Ana Silva",
+  "email": "ana@example.com",
+  "endereco_id": 1
+}
+```
+
+Erros: `422` para entrada inválida;
+`404` para CEP não encontrado; `502` para falha de consulta ao ViaCEP,
+incluindo timeout e resposta inválida. Email é salvo em minúsculas, sem espaços nas extremidades.
+Matrícula, email e CEP continuam protegidos pelas restrições do banco.
+Nesta versão didática, erros de integridade não são tratados pelo service;
+conflitos retornam erro interno (500), sem mensagem personalizada.
+A sessão é fechada por `get_db()` ao final da requisição, desfazendo alterações
+não confirmadas em caso de falha.
+
+Contrato do provedor: https://viacep.com.br/
+
+### GET /alunos/{id}/situacao-academica
+
+Calcula a média simples de todas as notas lançadas para o aluno. Não há pesos
+por disciplina. Média maior ou igual a 7 resulta em `aprovado`; abaixo de 7,
+`reprovado`. Sem notas, retorna `media: null` e `situacao: "sem_notas"`.
+Aluno inexistente retorna `404`.
+
+```json
+{
+  "aluno_id": 1,
+  "matricula": "2026001",
+  "nome_aluno": "Ana Silva",
+  "total_notas": 2,
+  "media": 7.5,
+  "situacao": "aprovado"
+}
+```
+
+A situação é calculada antes do arredondamento da média exibida para duas casas.
+Por exemplo, média exata de 6,995 retorna `media: 7.0` e `situacao: "reprovado"`.
+
+### Testes
+
+Na pasta `backend`, execute:
+
+```bash
+uv run python -m unittest discover -s tests -v
+```
+
+Os testes usam SQLite em memória, ViaCEP simulado e compilação da migration
+para PostgreSQL. Não acessam bancos configurados nem fazem consultas externas.
+O módulo `database.py` também configura MySQL na importação; para executar a
+aplicação e o Alembic, mantenha as variáveis `MYSQL_USER`, `MYSQL_PASSWORD`,
+`MYSQL_HOST` e `MYSQL_DATABASE` exigidas pela configuração atual.
+
+## Upload de notas por CSV
+
+Envie o arquivo para `POST /notas/upload-csv`, no campo `arquivo` do formulário.
+No Swagger (`/docs`), abra a rota, clique em **Try it out** e selecione o CSV.
+
+Formato: UTF-8, separado por vírgulas e com ponto nas casas decimais.
+Os IDs devem corresponder a alunos e disciplinas já cadastrados.
+
+```csv
+aluno_id,disciplina_id,nota
+1,1,8.5
+1,2,7.0
+2,1,9.0
+```
+
+Arquivo de exemplo: `exemplos/notas.csv`.
+Cada linha cria uma nota; enviar novamente cadastra novas linhas.
+A rota lê o CSV, adiciona os objetos `Nota` e executa um único `commit()`.
+Não há validações adicionais nem tratamento personalizado de erros.
+
+```bash
+curl -X POST http://localhost:8000/notas/upload-csv \
+  -F "arquivo=@exemplos/notas.csv"
+```
+
+O upload usa `python-multipart`, incluído nas dependências do projeto,
+conforme a [documentação do FastAPI](https://fastapi.tiangolo.com/tutorial/request-files/).
+
 
 
 ## 1. Clonar e Preparar o Ambiente

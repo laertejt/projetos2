@@ -1,5 +1,5 @@
 from typing import Optional
-from sqlalchemy import String, Integer, ForeignKey, Numeric
+from sqlalchemy import String, Integer, ForeignKey, Numeric, Index, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
@@ -22,6 +22,10 @@ class Aluno(Base):
     nome_aluno: Mapped[str] = mapped_column(String(255))
     email: Mapped[str] = mapped_column(String(100))
     endereco_id: Mapped[int] = mapped_column(ForeignKey("tb_enderecos.id"))
+
+    __table_args__ = (
+        Index('uq_tb_alunos_email', func.lower(func.trim(email)), unique=True),
+    )
 
 class Disciplina(Base):
     __tablename__ = 'tb_disciplinas'

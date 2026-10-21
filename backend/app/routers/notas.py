@@ -1,12 +1,35 @@
-from fastapi import APIRouter
+import csv
+from io import StringIO
+
+from fastapi import APIRouter, Depends, UploadFile
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 import pandas as pd
-from app.database import engine
+from app.database import engine, get_db
+from app.models import Nota
 # Importação corrigida para o singular (NotaIn, NotaUpdateIn)
 from app.schemas import NotaIn, NotaUpdateIn 
 
 # Prefixo no plural
 router = APIRouter(prefix="/notas")
+
+@router.post("/upload-csv")
+def upload_notas_csv(arquivo: UploadFile, db: Session = Depends(get_db)):
+  conteudo = arquivo.file.read().decode("utf-8-sig")
+  linhas = csv.DictReader(StringIO(conteudo))
+  quantidade = 0
+
+  for linha in linhas:
+    nota = Nota(
+      aluno_id=int(linha["aluno_id"]),
+      disciplina_id=int(linha["disciplina_id"]),
+      nota=float(linha["nota"]),
+    )
+    db.add(nota)
+    quantidade += 1
+
+  db.commit()
+  return {"mensagem": "Notas importadas com sucesso!", "quantidade": quantidade}
 
 @router.get("/pegar-mensagem")
 def primeira_api():
